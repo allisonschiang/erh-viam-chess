@@ -63,7 +63,7 @@ func testBoardPiece(t *testing.T, boardName string) {
 	pc, err := pointcloud.NewFromFile(pcdFile, "")
 	test.That(t, err, test.ShouldBeNil)
 
-	squares, err := findBoardAndPieces(input, pc, touch.RealSenseProperties)
+	squares, err := findBoardAndPieces(input, pc, touch.RealSensePropertiesD435At1280by720)
 	test.That(t, err, test.ShouldBeNil)
 
 	// Create debug image with square labels
@@ -118,7 +118,7 @@ func TestBoard13E2Pointcloud(t *testing.T) {
 	pc, err := pointcloud.NewFromFile("data/board13.pcd", "")
 	test.That(t, err, test.ShouldBeNil)
 
-	squares, err := findBoardAndPieces(input, pc, touch.RealSenseProperties)
+	squares, err := findBoardAndPieces(input, pc, touch.RealSensePropertiesD435At1280by720)
 	test.That(t, err, test.ShouldBeNil)
 
 	// Find the e2 square
