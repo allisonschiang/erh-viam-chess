@@ -7,6 +7,7 @@ import (
 
 	"go.viam.com/rdk/logging"
 	generic "go.viam.com/rdk/services/generic"
+	"go.viam.com/rdk/vision/viscapture"
 
 	"github.com/erh/vmodutils"
 
@@ -46,6 +47,30 @@ func realMain() error {
 		return fmt.Errorf("need command")
 	}
 
+	machine, err := vmodutils.ConnectToHostFromCLIToken(ctx, *host, logger)
+	if err != nil {
+		return err
+	}
+	defer machine.Close(ctx)
+
+	deps, err := vmodutils.MachineToDependencies(machine)
+	if err != nil {
+		return err
+	}
+
+	if *cmd == "piece-finder" {
+		pf, err := viamchess.NewPieceFinder(ctx, deps, generic.Named("foo"), &viamchess.PieceFinderConfig{"cam"}, logger)
+		if err != nil {
+			return err
+		}
+		all, err := pf.CaptureAllFromCamera(ctx, "cam", viscapture.CaptureOptions{}, nil)
+		if err != nil {
+			return err
+		}
+		logger.Infof("all: %v", all)
+		return nil
+	}
+
 	cfg := viamchess.ChessConfig{
 		PieceFinder: "piece-finder",
 		Arm:         "arm",
@@ -54,18 +79,7 @@ func realMain() error {
 		Camera:      "cam",
 		CaptureDir:  "captured-data",
 	}
-	_, _, err := cfg.Validate("")
-	if err != nil {
-		return err
-	}
-
-	machine, err := vmodutils.ConnectToHostFromCLIToken(ctx, *host, logger)
-	if err != nil {
-		return err
-	}
-	defer machine.Close(ctx)
-
-	deps, err := vmodutils.MachineToDependencies(machine)
+	_, _, err = cfg.Validate("")
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang/geo/r3"
+	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/pointcloud"
 	"go.viam.com/rdk/rimage"
 	"go.viam.com/test"
@@ -53,6 +54,7 @@ func TestComputeSquareBounds(t *testing.T) {
 }
 
 func testBoardPiece(t *testing.T, boardName string) {
+	logger := logging.NewTestLogger(t)
 	// Read the input image
 	imageFile := "data/" + boardName + ".jpg"
 	input, err := rimage.ReadImageFromFile(imageFile)
@@ -63,7 +65,7 @@ func testBoardPiece(t *testing.T, boardName string) {
 	pc, err := pointcloud.NewFromFile(pcdFile, "")
 	test.That(t, err, test.ShouldBeNil)
 
-	squares, err := findBoardAndPieces(input, pc, touch.RealSensePropertiesD435At1280by720)
+	squares, err := findBoardAndPieces(input, pc, touch.RealSensePropertiesD435At1280by720, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	// Create debug image with square labels
@@ -110,6 +112,7 @@ func TestBoardPiece13(t *testing.T) {
 }
 
 func TestBoard13E2Pointcloud(t *testing.T) {
+	logger := logging.NewTestLogger(t)
 	// Read the input image
 	input, err := rimage.ReadImageFromFile("data/board13.jpg")
 	test.That(t, err, test.ShouldBeNil)
@@ -118,7 +121,7 @@ func TestBoard13E2Pointcloud(t *testing.T) {
 	pc, err := pointcloud.NewFromFile("data/board13.pcd", "")
 	test.That(t, err, test.ShouldBeNil)
 
-	squares, err := findBoardAndPieces(input, pc, touch.RealSensePropertiesD435At1280by720)
+	squares, err := findBoardAndPieces(input, pc, touch.RealSensePropertiesD435At1280by720, logger)
 	test.That(t, err, test.ShouldBeNil)
 
 	// Find the e2 square

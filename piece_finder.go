@@ -164,14 +164,19 @@ func computeSquareBounds(corners []image.Point, col, row int) image.Rectangle {
 	return bounds
 }
 
-func findBoardAndPieces(srcImg image.Image, pc pointcloud.PointCloud, props camera.Properties) ([]squareInfo, error) {
+func findBoardAndPieces(srcImg image.Image, pc pointcloud.PointCloud, props camera.Properties, logger logging.Logger) ([]squareInfo, error) {
 
 	corners, err := findBoard(srcImg)
 	if err != nil {
 		return nil, err
 	}
 
-	//fmt.Printf("corners: %v\n", corners)
+	logger.Debugf("corners: %v", corners)
+
+	logger.Debugf("camera intrinsics: %#v", props.IntrinsicParams)
+	if props.ExtrinsicParams != nil {
+		logger.Debugf("camera extrinsics: %v %v", props.ExtrinsicParams.Translation, props.ExtrinsicParams.Orientation)
+	}
 
 	squares := []squareInfo{}
 
@@ -187,7 +192,7 @@ func findBoardAndPieces(srcImg image.Image, pc pointcloud.PointCloud, props came
 			}
 
 			if subPc.Size() == 0 {
-				return nil, fmt.Errorf("pc for %s is empty in findBoardAndPieces", name)
+				return nil, fmt.Errorf("pc for %s is empty in findBoardAndPieces srcRect: %v", name, srcRect)
 			}
 
 			pieceColor := estimatePieceColor(subPc)
@@ -314,7 +319,7 @@ func (bc *PieceFinder) CaptureAllFromCamera(ctx context.Context, cameraName stri
 	}
 
 	_, span2 = trace.StartSpan(ctx, "PieceFinder::CaptureAllFromCamera::findBoardAndPieces")
-	squares, err := findBoardAndPieces(ret.Image, pc, bc.props)
+	squares, err := findBoardAndPieces(ret.Image, pc, bc.props, bc.logger)
 	span2.End()
 	if err != nil {
 		return ret, err
