@@ -4,13 +4,13 @@ go 1.25.1
 
 require (
 	github.com/corentings/chess/v2 v2.3.5
-	github.com/erh/vmodutils v0.3.11-0.20260302173118-4cb87a99b416
+	github.com/erh/vmodutils v0.3.11-0.20260304001501-a5bab277d4e9
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
 	github.com/mitchellh/mapstructure v1.5.0
 	go.uber.org/multierr v1.11.0
-	go.viam.com/rdk v0.115.0-rc0.0.20260302172525-7153ec566a19
+	go.viam.com/rdk v0.115.0-rc0.0.20260304001300-42a66a85c921
 	go.viam.com/test v1.2.4
-	go.viam.com/utils v0.4.3
+	go.viam.com/utils v0.4.11
 	golang.org/x/image v0.25.0
 )
 
@@ -30,6 +30,7 @@ require (
 	codeberg.org/go-fonts/liberation v0.5.0 // indirect
 	codeberg.org/go-latex/latex v0.1.0 // indirect
 	codeberg.org/go-pdf/fpdf v0.10.0 // indirect
+	contrib.go.opencensus.io/exporter/jaeger v0.2.1 // indirect
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.4 // indirect
 	git.sr.ht/~sbinet/gg v0.6.0 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
@@ -65,20 +66,20 @@ require (
 	github.com/bufbuild/protocompile v0.9.0 // indirect
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
 	github.com/campoy/embedmd v1.0.0 // indirect
-	github.com/catppuccin/go v0.2.0 // indirect
+	github.com/catppuccin/go v0.3.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/bubbles v0.20.0 // indirect
-	github.com/charmbracelet/bubbletea v1.1.1 // indirect
+	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7 // indirect
+	github.com/charmbracelet/bubbletea v1.3.6 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
-	github.com/charmbracelet/huh v0.6.0 // indirect
+	github.com/charmbracelet/huh v0.8.0 // indirect
 	github.com/charmbracelet/huh/spinner v0.0.0-20240917123815-c9b2c9cdb7b6 // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
-	github.com/charmbracelet/x/ansi v0.8.0 // indirect
-	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
+	github.com/charmbracelet/x/ansi v0.9.3 // indirect
+	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/chenzhekl/goply v0.0.0-20190930133256-258c2381defd // indirect
@@ -220,6 +221,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
+	github.com/uber/jaeger-client-go v2.25.0+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urfave/cli/v2 v2.10.3 // indirect
 	github.com/viamrobotics/ice/v2 v2.3.40 // indirect
