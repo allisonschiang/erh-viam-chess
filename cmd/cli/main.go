@@ -67,7 +67,9 @@ func realMain() error {
 		if err != nil {
 			return err
 		}
-		logger.Infof("all: %v", all)
+		logger.Infof("Detections    : %d %v", len(all.Detections), all.Detections)
+		logger.Infof("Classification: %d %v", len(all.Classifications), all.Classifications)
+		logger.Infof("Objects       : %d %v", len(all.Objects), all.Objects)
 		return nil
 	}
 
