@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/draw"
 	"os"
+	"strings"
 
 	"github.com/golang/geo/r3"
 
@@ -385,9 +386,9 @@ func (bc *PieceFinder) CaptureAllFromCamera(ctx context.Context, cameraName stri
 
 		ret.Detections = append(ret.Detections, objectdetection.NewDetectionWithoutImgBounds(s.originalBounds, 1, label))
 
-		lowPoint := touch.PCFindLowestInRegion(s.pc, image.Rect(-10000, -10000, 10000, 10000))
+		highPoint := getPickupCenter(o)
 
-		lowX, lowY, err := bc.props.PointToPixel(r3.Vector{lowPoint.X, lowPoint.Y, lowPoint.Z})
+		highX, highY, err := bc.props.PointToPixel(r3.Vector{highPoint.X, highPoint.Y, highPoint.Z})
 		if err != nil {
 			return ret, fmt.Errorf("PointToPixel failed: %w", err)
 		}
@@ -395,15 +396,31 @@ func (bc *PieceFinder) CaptureAllFromCamera(ctx context.Context, cameraName stri
 		ret.Detections = append(ret.Detections,
 			objectdetection.NewDetectionWithoutImgBounds(
 				image.Rect(
-					int(lowX-5),
-					int(lowY-5),
-					int(lowX+5),
-					int(lowY+5),
+					int(highX-5),
+					int(highY-5),
+					int(highX+5),
+					int(highY+5),
 				),
 				1, "x-"+label))
 	}
 
 	return ret, nil
+}
+
+func getPickupCenter(o *viz.Object) r3.Vector {
+	md := o.MetaData()
+	center := md.Center()
+
+	if strings.HasSuffix(o.Geometry.Label(), "-0") {
+		return center
+	}
+
+	high := touch.PCFindHighestInRegion(o, image.Rect(-1000, -1000, 1000, 1000))
+	return r3.Vector{
+		X: (center.X + high.X) / 2,
+		Y: (center.Y + high.Y) / 2,
+		Z: high.Z,
+	}
 }
 
 func (bc *PieceFinder) GetProperties(ctx context.Context, extra map[string]interface{}) (*vision.Properties, error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"image"
 	"os"
 	"strings"
 	"sync"
@@ -36,8 +35,6 @@ import (
 
 	"github.com/corentings/chess/v2"
 	"github.com/corentings/chess/v2/uci"
-
-	"github.com/erh/vmodutils/touch"
 )
 
 var ChessModel = family.WithModel("chess")
@@ -387,19 +384,7 @@ func (s *viamChessChess) getCenterFor(data viscapture.VisCapture, pos string, th
 		return r3.Vector{}, fmt.Errorf("can't find object for: %s", pos)
 	}
 
-	md := o.MetaData()
-	center := md.Center()
-
-	if strings.HasSuffix(o.Geometry.Label(), "-0") {
-		return center, nil
-	}
-
-	high := touch.PCFindHighestInRegion(o, image.Rect(-1000, -1000, 1000, 1000))
-	return r3.Vector{
-		X: (center.X + high.X) / 2,
-		Y: (center.Y + high.Y) / 2,
-		Z: high.Z,
-	}, nil
+	return getPickupCenter(o), nil
 }
 
 func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCapture, theState *state, from, to string, m *chess.Move) error {
