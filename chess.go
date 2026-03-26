@@ -196,7 +196,7 @@ func NewChess(ctx context.Context, deps resource.Dependencies, name resource.Nam
 		return nil, err
 	}
 
-	s.motion, err = motion.FromDependencies(deps, "builtin")
+	s.motion, err = motion.FromProvider(deps, "builtin")
 	if err != nil {
 		return nil, err
 	}
@@ -549,7 +549,18 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 		}
 	}
 
-	const grabZ = 40.0 // 2 cm above world origin
+	const grabZ = 40.0     // grab height for standard pieces (mm)
+	const grabZTall = 80.0 // grab height for king and queen (mm)
+
+	// Determine grab height based on piece type.
+	pickupZ := grabZ
+	if theState != nil {
+		sq := chess.NewSquare(chess.File(from[0]-'a'), chess.Rank(from[1]-'1'))
+		pt := theState.game.Position().Board().Piece(sq).Type()
+		if pt == chess.King || pt == chess.Queen {
+			pickupZ = grabZTall
+		}
+	}
 
 	// Pick up from source square.
 	{
@@ -568,7 +579,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 
-		grabPos := r3.Vector{X: xy.X, Y: xy.Y, Z: grabZ}
+		grabPos := r3.Vector{X: xy.X, Y: xy.Y, Z: pickupZ}
 
 		tryGrab := func(pos r3.Vector) (bool, error) {
 			if err := s.setupGripper(ctx); err != nil {
@@ -586,7 +597,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 		if !got {
-			s.logger.Warnf("grab failed at %s, retrying +10mm X", from)
+			s.logger.Warnf("grab failed at %s, retrying +20mm X", from)
 			got, err = tryGrab(r3.Vector{X: grabPos.X + 20, Y: grabPos.Y, Z: grabPos.Z})
 			if err != nil {
 				return err
@@ -625,7 +636,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: grabZ})
+		err = s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: pickupZ})
 		if err != nil {
 			return err
 		}
@@ -932,6 +943,20 @@ func (s *viamChessChess) resetBoard(ctx context.Context) error {
 
 	theState := &resetState{theMainState.game.Position().Board(), theMainState.graveyard}
 
+	// Clear stale cache — the board has moved since the last game.
+	s.clearSquareCache()
+
+	// One snapshot before the loop to populate the square cache.
+	err = s.goToStart(ctx)
+	if err != nil {
+		return err
+	}
+	all, err := s.pieceFinder.CaptureAllFromCamera(ctx, "", viscapture.CaptureOptions{}, nil)
+	if err != nil {
+		return err
+	}
+	s.populateCacheFromCapture(all)
+
 	for {
 		from, to, err := nextResetMove(theState)
 		if err != nil {
@@ -939,16 +964,6 @@ func (s *viamChessChess) resetBoard(ctx context.Context) error {
 		}
 		if from < 0 {
 			break
-		}
-
-		err = s.goToStart(ctx)
-		if err != nil {
-			return err
-		}
-
-		all, err := s.pieceFinder.CaptureAllFromCamera(ctx, "", viscapture.CaptureOptions{}, nil)
-		if err != nil {
-			return err
 		}
 
 		err = s.movePiece(ctx, all, nil, squareToString(from), squareToString(to), nil)
@@ -983,7 +998,7 @@ func (s *viamChessChess) checkPositionForMoves(ctx context.Context, all viscaptu
 		return err
 	}
 
-	differnces := []chess.Square{}
+	differences := []chess.Square{}
 	from := chess.NoSquare
 	to := chess.NoSquare
 
@@ -995,8 +1010,8 @@ func (s *viamChessChess) checkPositionForMoves(ctx context.Context, all viscaptu
 		oc := int(o.Geometry.Label()[3] - '0')
 
 		if int(fromState.Color()) != oc {
-			s.logger.Infof("differnent %s fromState: %v o: %v oc: %v", x, fromState, o.Geometry.Label(), oc)
-			differnces = append(differnces, sq)
+			s.logger.Infof("different %s fromState: %v o: %v oc: %v", x, fromState, o.Geometry.Label(), oc)
+			differences = append(differences, sq)
 			if oc == 0 {
 				from = sq
 			} else if oc > 0 {
@@ -1006,37 +1021,37 @@ func (s *viamChessChess) checkPositionForMoves(ctx context.Context, all viscaptu
 
 	}
 
-	if len(differnces) == 0 {
+	if len(differences) == 0 {
 		return nil
 	}
 
-	if len(differnces) == 4 {
+	if len(differences) == 4 {
 		// is this a castle??
-		if squaresSame(differnces, []chess.Square{chess.E1, chess.F1, chess.G1, chess.H1}) {
+		if squaresSame(differences, []chess.Square{chess.E1, chess.F1, chess.G1, chess.H1}) {
 			// white king castle
 			from = chess.E1
 			to = chess.G1
-			differnces = nil
-		} else if squaresSame(differnces, []chess.Square{chess.E1, chess.A1, chess.C1, chess.D1}) {
+			differences = nil
+		} else if squaresSame(differences, []chess.Square{chess.E1, chess.A1, chess.C1, chess.D1}) {
 			// white queen castle
 			from = chess.E1
 			to = chess.C1
-			differnces = nil
-		} else if squaresSame(differnces, []chess.Square{chess.E8, chess.F8, chess.G8, chess.H8}) {
+			differences = nil
+		} else if squaresSame(differences, []chess.Square{chess.E8, chess.F8, chess.G8, chess.H8}) {
 			// black king castle
 			from = chess.E8
 			to = chess.G8
-			differnces = nil
-		} else if squaresSame(differnces, []chess.Square{chess.E8, chess.A8, chess.C8, chess.D8}) {
+			differences = nil
+		} else if squaresSame(differences, []chess.Square{chess.E8, chess.A8, chess.C8, chess.D8}) {
 			// black queen castle
 			from = chess.E8
 			to = chess.C8
-			differnces = nil
+			differences = nil
 		}
 	}
 
-	if len(differnces) != 2 && len(differnces) != 0 {
-		return fmt.Errorf("bad number of differnces (%d) : %v", len(differnces), differnces)
+	if len(differences) != 2 && len(differences) != 0 {
+		return fmt.Errorf("bad number of differences (%d) : %v", len(differences), differences)
 	}
 
 	moves := theState.game.ValidMoves()
@@ -1088,7 +1103,7 @@ func (s *viamChessChess) runCaptureThread(ctx context.Context) {
 		if s.movePieceStatus.Load() > 0 {
 			err := s.doCapture(ctx, sessionStart)
 			if err != nil {
-				s.logger.Errorf("error un runJointCaptureThread: %v", err)
+				s.logger.Errorf("error in runCaptureThread: %v", err)
 			}
 		}
 
