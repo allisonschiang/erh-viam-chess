@@ -420,7 +420,7 @@ func (s *viamChessChess) graveyardPosition(data viscapture.VisCapture, pos int) 
 
 func (s *viamChessChess) getCenterFor(data viscapture.VisCapture, pos string, theState *state) (r3.Vector, error) {
 	if pos == "-" {
-		if s == nil {
+		if theState == nil {
 			return r3.Vector{400, -400, 200}, nil
 		}
 		return s.graveyardPosition(data, len(theState.graveyard))
