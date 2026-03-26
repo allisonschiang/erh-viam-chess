@@ -866,7 +866,16 @@ func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*ch
 	}
 
 	if m.HasTag(chess.EnPassant) {
-		return nil, fmt.Errorf("can't handle enpassant")
+		startRank := m.S1().String()[1]
+		endFile := m.S2().String()[0]
+
+		pieceToRemoveSquare := fmt.Sprintf("%s%s", endFile, startRank)
+		err = s.movePiece(ctx, all, theState, pieceToRemoveSquare, "-", m)
+		if err != nil {
+			return nil, err
+		}
+
+		//return nil, fmt.Errorf("can't handle enpassant")
 	}
 
 	err = s.movePiece(ctx, all, theState, m.S1().String(), m.S2().String(), m)
