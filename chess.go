@@ -597,7 +597,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 		if !got {
-			s.logger.Warnf("grab failed at %s, retrying +10mm X", from)
+			s.logger.Warnf("grab failed at %s, retrying +20mm X", from)
 			got, err = tryGrab(r3.Vector{X: grabPos.X + 20, Y: grabPos.Y, Z: grabPos.Z})
 			if err != nil {
 				return err
