@@ -196,7 +196,7 @@ func NewChess(ctx context.Context, deps resource.Dependencies, name resource.Nam
 		return nil, err
 	}
 
-	s.motion, err = motion.FromDependencies(deps, "builtin")
+	s.motion, err = motion.FromProvider(deps, "builtin")
 	if err != nil {
 		return nil, err
 	}
@@ -549,7 +549,18 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 		}
 	}
 
-	const grabZ = 40.0 // 2 cm above world origin
+	const grabZ = 40.0     // grab height for standard pieces (mm)
+	const grabZTall = 80.0 // grab height for king and queen (mm)
+
+	// Determine grab height based on piece type.
+	pickupZ := grabZ
+	if theState != nil {
+		sq := chess.NewSquare(chess.File(from[0]-'a'), chess.Rank(from[1]-'1'))
+		pt := theState.game.Position().Board().Piece(sq).Type()
+		if pt == chess.King || pt == chess.Queen {
+			pickupZ = grabZTall
+		}
+	}
 
 	// Pick up from source square.
 	{
@@ -568,7 +579,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 
-		grabPos := r3.Vector{X: xy.X, Y: xy.Y, Z: grabZ}
+		grabPos := r3.Vector{X: xy.X, Y: xy.Y, Z: pickupZ}
 
 		tryGrab := func(pos r3.Vector) (bool, error) {
 			if err := s.setupGripper(ctx); err != nil {
@@ -625,7 +636,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: grabZ})
+		err = s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: pickupZ})
 		if err != nil {
 			return err
 		}
