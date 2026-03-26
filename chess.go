@@ -415,13 +415,13 @@ func (s *viamChessChess) graveyardPosition(data viscapture.VisCapture, pos int) 
 		baseX, baseY = md.Center().X, md.Center().Y
 	}
 
-	return r3.Vector{baseX, baseY - float64(ex*80), 60}, nil
+	return r3.Vector{X: baseX, Y: baseY - float64(ex*80), Z: 60}, nil
 }
 
 func (s *viamChessChess) getCenterFor(data viscapture.VisCapture, pos string, theState *state) (r3.Vector, error) {
 	if pos == "-" {
 		if theState == nil {
-			return r3.Vector{400, -400, 200}, nil
+			return r3.Vector{X: 400, Y: -400, Z: 200}, nil
 		}
 		return s.graveyardPosition(data, len(theState.graveyard))
 	}
@@ -563,25 +563,40 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{xy.X, xy.Y, safeZ})
+		err = s.moveGripper(ctx, r3.Vector{X: xy.X, Y: xy.Y, Z: safeZ})
 		if err != nil {
 			return err
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{xy.X, xy.Y, grabZ})
-		if err != nil {
-			return err
+		grabPos := r3.Vector{X: xy.X, Y: xy.Y, Z: grabZ}
+
+		tryGrab := func(pos r3.Vector) (bool, error) {
+			if err := s.setupGripper(ctx); err != nil {
+				return false, err
+			}
+			time.Sleep(500 * time.Millisecond)
+			if err := s.moveGripper(ctx, pos); err != nil {
+				return false, err
+			}
+			return s.myGrab(ctx)
 		}
 
-		got, err := s.myGrab(ctx)
+		got, err := tryGrab(grabPos)
 		if err != nil {
 			return err
 		}
 		if !got {
-			return fmt.Errorf("couldn't grab piece at %s", from)
+			s.logger.Warnf("grab failed at %s, retrying +10mm X", from)
+			got, err = tryGrab(r3.Vector{X: grabPos.X + 20, Y: grabPos.Y, Z: grabPos.Z})
+			if err != nil {
+				return err
+			}
+		}
+		if !got {
+			return fmt.Errorf("couldn't grab piece at %s after 2 attempts", from)
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{xy.X, xy.Y, safeZ})
+		err = s.moveGripper(ctx, r3.Vector{X: xy.X, Y: xy.Y, Z: safeZ})
 		if err != nil {
 			return err
 		}
@@ -605,12 +620,12 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			}
 		}
 
-		err := s.moveGripper(ctx, r3.Vector{destXY.X, destXY.Y, safeZ})
+		err := s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: safeZ})
 		if err != nil {
 			return err
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{destXY.X, destXY.Y, grabZ})
+		err = s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: grabZ})
 		if err != nil {
 			return err
 		}
@@ -620,7 +635,7 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 			return err
 		}
 
-		err = s.moveGripper(ctx, r3.Vector{destXY.X, destXY.Y, safeZ})
+		err = s.moveGripper(ctx, r3.Vector{X: destXY.X, Y: destXY.Y, Z: safeZ})
 		if err != nil {
 			return err
 		}
