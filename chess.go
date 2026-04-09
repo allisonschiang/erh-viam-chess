@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -65,6 +66,10 @@ type ChessConfig struct {
 	EngineMillis int `json:"engine-millis"`
 
 	CaptureDir string // mostly for vla data
+
+	Speak       bool `json:"speak"`
+	SpeakSpeed  int  `json:"speak-speed"`
+	SpeakVolume int  `json:"speak-volume"`
 }
 
 func (cfg *ChessConfig) engine() string {
@@ -882,6 +887,64 @@ func (s *viamChessChess) pickMove(ctx context.Context, game *chess.Game) (*chess
 
 }
 
+func speakText(cfg *ChessConfig, text string) {
+	if !cfg.Speak {
+		return
+	}
+	speed := cfg.SpeakSpeed
+	if speed <= 0 {
+		speed = 140
+	}
+	volume := cfg.SpeakVolume
+	if volume <= 0 {
+		volume = 150
+	}
+	if err := exec.Command("espeak", "-s", fmt.Sprintf("%d", speed), "-a", fmt.Sprintf("%d", volume), "-v", "en+m3", text).Run(); err != nil {
+		// espeak not installed or failed — silently skip
+		_ = err
+	}
+}
+
+func buildMoveDescription(m *chess.Move, pos *chess.Position, game *chess.Game) string {
+	pieceNames := map[chess.PieceType]string{
+		chess.Pawn:   "pawn",
+		chess.Knight: "knight",
+		chess.Bishop: "bishop",
+		chess.Rook:   "rook",
+		chess.Queen:  "queen",
+		chess.King:   "king",
+	}
+
+	piece := pos.Board().Piece(m.S1())
+	captured := pos.Board().Piece(m.S2())
+	pieceName := pieceNames[piece.Type()]
+
+	var description string
+	switch {
+	case m.HasTag(chess.KingSideCastle):
+		description = "castles kingside"
+	case m.HasTag(chess.QueenSideCastle):
+		description = "castles queenside"
+	case m.Promo() != chess.NoPieceType:
+		description = fmt.Sprintf("pawn promotes to %s", pieceNames[m.Promo()])
+	case captured != chess.NoPiece:
+		description = fmt.Sprintf("%s takes %s on %s", pieceName, pieceNames[captured.Type()], m.S2().String())
+	default:
+		description = fmt.Sprintf("%s to %s", pieceName, m.S2().String())
+	}
+
+	switch game.Outcome() {
+	case chess.WhiteWon, chess.BlackWon:
+		description += ", checkmate"
+	case chess.NoOutcome:
+		if m.HasTag(chess.Check) {
+			description += ", check"
+		}
+	}
+
+	return description
+}
+
 func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*chess.Move, error) {
 	ctx, span := trace.StartSpan(ctx, "makeAMove")
 	defer span.End()
@@ -980,6 +1043,8 @@ func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*ch
 		return nil, err
 	}
 
+	positionBeforeMove := theState.game.Position()
+
 	err = theState.game.Move(m, nil)
 	if err != nil {
 		return nil, err
@@ -989,6 +1054,8 @@ func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*ch
 	if err != nil {
 		return nil, err
 	}
+
+	go speakText(s.conf, buildMoveDescription(m, positionBeforeMove, theState.game))
 
 	return m, nil
 }
