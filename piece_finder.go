@@ -97,6 +97,7 @@ func NewPieceFinder(ctx context.Context, deps resource.Dependencies, name resour
 
 type PieceFinder struct {
 	resource.AlwaysRebuild
+	resource.Named
 	resource.TriviallyCloseable
 
 	name   resource.Name
