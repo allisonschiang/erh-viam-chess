@@ -26,6 +26,7 @@ const PIECE_UNICODE: Record<string, string> = {
 let chessService: GenericServiceClient | null = null;
 const history: MoveRecord[] = [];
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshInFlight = false;
 
 // ── Connection ─────────────────────────────────────────────────────────────
 
@@ -211,6 +212,8 @@ function setMode(mode: string) {
 // ── Refresh ────────────────────────────────────────────────────────────────
 
 async function refreshState() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     const res = await doCommand({ "board-snapshot": true });
     if (typeof res.fen === "string") renderBoard(res.fen);
@@ -221,6 +224,8 @@ async function refreshState() {
     if (typeof res.mode === "string") setMode(res.mode);
   } catch (e) {
     console.error("refresh failed", e);
+  } finally {
+    refreshInFlight = false;
   }
 }
 
@@ -309,7 +314,7 @@ async function cmdToggleMode() {
 
 function startAutoRefresh() {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-  autoRefreshTimer = setInterval(refreshState, 5000);
+  autoRefreshTimer = setInterval(refreshState, 1500);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
