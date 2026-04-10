@@ -1303,6 +1303,29 @@ func (s *viamChessChess) checkPositionForMoves(ctx context.Context, all viscaptu
 				return err
 			}
 
+			// If the human only moved the king (2 differences), physically move
+			// the rook too. Use nil theState so movePiece reads occupancy from
+			// the camera (F1/D1/F8/D8 is empty, rook is still at H1/A1/H8/A8).
+			if len(differences) == 2 {
+				var rookFrom, rookTo string
+				switch {
+				case m.HasTag(chess.KingSideCastle) && from == chess.E1:
+					rookFrom, rookTo = "h1", "f1"
+				case m.HasTag(chess.QueenSideCastle) && from == chess.E1:
+					rookFrom, rookTo = "a1", "d1"
+				case m.HasTag(chess.KingSideCastle) && from == chess.E8:
+					rookFrom, rookTo = "h8", "f8"
+				case m.HasTag(chess.QueenSideCastle) && from == chess.E8:
+					rookFrom, rookTo = "a8", "d8"
+				}
+				if rookFrom != "" {
+					s.logger.Infof("castle detected: moving rook %s -> %s", rookFrom, rookTo)
+					if err = s.movePiece(ctx, all, nil, rookFrom, rookTo, nil, nil); err != nil {
+						return fmt.Errorf("castle rook move failed: %w", err)
+					}
+				}
+			}
+
 			return nil
 		}
 	}
