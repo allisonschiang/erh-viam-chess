@@ -25,7 +25,7 @@
     {
       "name": "piece-finder",
       "api": "rdk:service:vision",
-      "model": "erh:viam-chess:piece-finder",
+      "model": "viam-labs:hackathon-chess:piece-finder",
       "attributes": {
         "input": "cam"
       },
@@ -55,7 +55,7 @@
     {
       "name": "chess",
       "api": "rdk:service:generic",
-      "model": "erh:viam-chess:chess",
+      "model": "viam-labs:hackathon-chess:chess",
       "attributes": {
         "engine": "/usr/games/stockfish",
         "gripper": "gripper",
@@ -73,6 +73,8 @@
       "api": "rdk:service:generic",
       "model": "erh:viam-streamdeck:streamdeck-any",
       "attributes": {
+        "brightness": 100,
+        "initial_page": "engine",
         "dials": [
           {
             "dial": 0,
@@ -80,81 +82,120 @@
             "command": "skill"
           }
         ],
-        "brightness": 100,
-        "keys": [
-          {
-            "color": "green",
-            "component": "chess",
-            "method": "do_command",
-            "args": [
+        "pages": {
+          "engine": {
+            "keys": [
               {
-                "go": 1
+                "key": 0,
+                "color": "green",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "go": 1 }],
+                "text": "Go 1"
+              },
+              {
+                "key": 1,
+                "color": "green",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "go": 2 }],
+                "text": "Go 2"
+              },
+              {
+                "key": 2,
+                "color": "green",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "go": 10 }],
+                "text": "Go 10"
+              },
+              {
+                "key": 3,
+                "color": "green",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "go": 40 }],
+                "text": "Go 40"
+              },
+              {
+                "key": 4,
+                "color": "blue",
+                "component": "buttons",
+                "method": "do_command",
+                "args": [{ "set_page": "human" }],
+                "text": "→ Human"
+              },
+              {
+                "key": 5,
+                "color": "#00bcd4",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "board-snapshot": true }],
+                "text": "Snapshot"
+              },
+              {
+                "key": 6,
+                "color": "orange",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "reset": true }],
+                "text": "Reset"
+              },
+              {
+                "key": 7,
+                "color": "red",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "wipe": true }],
+                "text": "Wipe"
               }
-            ],
-            "text": "move 1",
-            "key": 0
+            ]
           },
-          {
-            "method": "do_command",
-            "args": [
+          "human": {
+            "keys": [
               {
-                "go": 2
-              }
-            ],
-            "text": "move 2",
-            "key": 1,
-            "color": "green",
-            "component": "chess"
-          },
-          {
-            "color": "green",
-            "component": "chess",
-            "method": "do_command",
-            "args": [
+                "key": 0,
+                "color": "green",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "go": 1 }],
+                "text": "Engine's Turn"
+              },
               {
-                "go": 10
-              }
-            ],
-            "text": "move 10",
-            "key": 2
-          },
-          {
-            "color": "green",
-            "component": "chess",
-            "method": "do_command",
-            "args": [
+                "key": 4,
+                "color": "blue",
+                "component": "buttons",
+                "method": "do_command",
+                "args": [{ "set_page": "engine" }],
+                "text": "→ Engine"
+              },
               {
-                "go": 40
-              }
-            ],
-            "text": "move 40",
-            "key": 3
-          },
-          {
-            "color": "orange",
-            "component": "chess",
-            "method": "do_command",
-            "args": [
+                "key": 5,
+                "color": "#00bcd4",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "board-snapshot": true }],
+                "text": "Snapshot"
+              },
               {
-                "reset": true
-              }
-            ],
-            "text": "reset",
-            "key": 4
-          },
-          {
-            "key": 5,
-            "color": "red",
-            "component": "chess",
-            "method": "do_command",
-            "args": [
+                "key": 6,
+                "color": "#ffd600",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "ClearCache": true }],
+                "text": "Clr Cache"
+              },
               {
-                "wipe": true
+                "key": 7,
+                "color": "orange",
+                "component": "chess",
+                "method": "do_command",
+                "args": [{ "reset": true }],
+                "text": "Reset"
               }
-            ],
-            "text": "wipe"
+            ]
           }
-        ]
+        }
       },
       "ui_folder": {
         "name": "app"
@@ -175,8 +216,8 @@
     },
     {
       "type": "registry",
-      "name": "erh_viam-chess",
-      "module_id": "erh:viam-chess",
+      "name": "viam-labs_viam-chess",
+      "module_id": "viam-labs:hackathon-chess",
       "version": "latest"
     },
     {
