@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -193,8 +194,6 @@ type viamChessChess struct {
 
 	squareXY   map[string]r3.Vector
 	squareXYMu sync.RWMutex
-
-	humanMode bool // true = human vs engine, false = engine vs engine
 }
 
 func newViamChessChess(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (resource.Resource, error) {
@@ -304,8 +303,6 @@ type cmdStruct struct {
 	Undo          int
 	PlayFEN       string `mapstructure:"play-fen"`
 	BoardSnapshot bool   `mapstructure:"board-snapshot"`
-	ToggleMode    bool   `mapstructure:"toggle-mode"`
-	SetMode       string `mapstructure:"set-mode"`
 }
 
 func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interface{}) (map[string]interface{}, error) {
@@ -322,22 +319,6 @@ func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interf
 		return nil, err
 	}
 
-	// Read-only / state-only commands — no arm movement needed, skip goToStart.
-	if cmd.ToggleMode {
-		s.humanMode = !s.humanMode
-		return map[string]interface{}{"mode": s.currentMode()}, nil
-	}
-	if cmd.SetMode != "" {
-		switch cmd.SetMode {
-		case "human":
-			s.humanMode = true
-		case "engine":
-			s.humanMode = false
-		default:
-			return nil, fmt.Errorf("unknown mode %q: use \"human\" or \"engine\"", cmd.SetMode)
-		}
-		return map[string]interface{}{"mode": s.currentMode()}, nil
-	}
 	if cmd.Wipe {
 		s.clearSquareCache()
 		return nil, s.wipe(ctx)
@@ -381,7 +362,6 @@ func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interf
 		return map[string]interface{}{
 			"fen":             theState.game.FEN(),
 			"camera_board":    cameraBoard,
-			"mode":            s.currentMode(),
 			"white_graveyard": whiteGY,
 			"black_graveyard": blackGY,
 		}, nil
@@ -454,24 +434,11 @@ func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interf
 	}
 
 	if cmd.Go > 0 {
-		var m *chess.Move
-		if s.humanMode {
-			// Human vs engine: detect the human's physical move via camera, then
-			// engine responds once regardless of cmd.Go value.
-			m, err = s.makeAMove(ctx, true)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			// Engine vs engine: make cmd.Go consecutive engine moves.
-			for n := range cmd.Go {
-				m, err = s.makeAMove(ctx, n == 0)
-				if err != nil {
-					return nil, err
-				}
-			}
+		m, err := s.makeNMoves(ctx, cmd.Go)
+		if err != nil {
+			return nil, err
 		}
-		return map[string]interface{}{"move": m.String(), "mode": s.currentMode()}, nil
+		return map[string]interface{}{"move": m.String()}, nil
 	}
 
 	if cmd.Undo > 0 {
@@ -590,13 +557,6 @@ func (s *viamChessChess) getCenterFor(data viscapture.VisCapture, pos string, th
 	}
 
 	return GetPickupCenter(o), nil
-}
-
-func (s *viamChessChess) currentMode() string {
-	if s.humanMode {
-		return "human"
-	}
-	return "engine"
 }
 
 // allSquaresCached returns true once all 64 board squares have a cached X,Y position.
@@ -1022,6 +982,18 @@ func (s *viamChessChess) pickMove(ctx context.Context, game *chess.Game) (*chess
 
 }
 
+func (s *viamChessChess) makeNMoves(ctx context.Context, n int) (*chess.Move, error) {
+	var m *chess.Move
+	for i := range n {
+		var err error
+		m, err = s.makeAMove(ctx, i == 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
+}
+
 func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*chess.Move, error) {
 	ctx, span := trace.StartSpan(ctx, "makeAMove")
 	defer span.End()
@@ -1121,7 +1093,6 @@ func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*ch
 		} else {
 			theState.whiteGraveyard = append(theState.whiteGraveyard, 6)
 		}
-		//return nil, fmt.Errorf("can't handle enpassant")
 	}
 
 	err = s.movePiece(ctx, all, theState, m.S1().String(), m.S2().String(), m, nil)
@@ -1650,11 +1621,9 @@ func squaresSame(a, b []chess.Square) bool {
 	// Check that every element in a exists in b
 	for _, sq := range a {
 		found := false
-		for _, sq2 := range b {
-			if sq == sq2 {
-				found = true
-				break
-			}
+		if slices.Contains(b, sq) {
+			found = true
+			break
 		}
 		if !found {
 			return false
