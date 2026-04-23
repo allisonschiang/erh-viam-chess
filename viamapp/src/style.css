@@ -29,6 +29,8 @@ nav {
   padding: 1.2rem;
   flex: 1;
   overflow: hidden;
+  justify-content: center;
+  align-items: stretch;
 }
 
 /* ── Boards ── */
@@ -41,15 +43,16 @@ nav {
 
 table.chess-table { border-collapse: collapse; border: 2px solid #555; }
 .chess-square {
-  width: 64px; height: 64px;
+  width: clamp(56px, 9vmin, 140px);
+  height: clamp(56px, 9vmin, 140px);
   text-align: center; vertical-align: middle;
   cursor: default;
 }
 .chess-square.light { background: #f0d9b5; }
 .chess-square.dark  { background: #b58863; }
-.rank-label { width: 22px; color: #888; font-size: 0.75rem; text-align: center; }
-.file-label { height: 22px; color: #888; font-size: 0.75rem; text-align: center; }
-.chess-piece { font-size: 2.6rem; line-height: 1; user-select: none; }
+.rank-label { width: clamp(22px, 2.5vmin, 36px); color: #888; font-size: clamp(0.7rem, 1.6vmin, 0.95rem); text-align: center; }
+.file-label { height: clamp(22px, 2.5vmin, 36px); color: #888; font-size: clamp(0.7rem, 1.6vmin, 0.95rem); text-align: center; }
+.chess-piece { font-size: clamp(2.2rem, 5.5vmin, 4.6rem); line-height: 1; user-select: none; }
 .chess-piece.piece-white { color: #fff; -webkit-text-stroke: 0.5px #777; }
 .chess-piece.piece-black { color: #1a1a1a; -webkit-text-stroke: 0.5px #777; }
 
@@ -58,7 +61,8 @@ table.chess-table { border-collapse: collapse; border: 2px solid #555; }
 /* ── Camera board indicators ── */
 .cam-white, .cam-black {
   display: block;
-  width: 36px; height: 36px;
+  width: clamp(26px, 5vmin, 72px);
+  height: clamp(26px, 5vmin, 72px);
   border-radius: 50%;
   margin: auto;
 }
@@ -70,8 +74,7 @@ table.chess-table { border-collapse: collapse; border: 2px solid #555; }
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  min-width: 320px;
-  max-width: 380px;
+  flex: 0 0 clamp(320px, 28vw, 460px);
   overflow-y: auto;
 }
 
@@ -122,6 +125,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-danger   { background: #c62828; color: #fff; }
 .btn-muted    { background: #37474f; color: #eee; }
 button.sm     { font-size: 0.75rem; padding: 0.25rem 0.5rem; }
+
+/* ── Warning banner ── */
+.warning {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: #5d4200;
+  color: #ffd580;
+  border-left: 3px solid #f57c00;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
 
 /* ── History ── */
 .history-card { flex: 1; display: flex; flex-direction: column; min-height: 0; }

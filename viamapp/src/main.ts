@@ -11,7 +11,7 @@ interface MachineCookie {
 }
 
 interface MoveRecord {
-  type: "move" | "go" | "reset" | "wipe" | "cache";
+  type: "move" | "go" | "reset" | "wipe" | "cache" | "export" | "import";
   label: string;
 }
 
@@ -297,6 +297,57 @@ async function cmdSnapshot() {
   await withSpinner("Capturing board snapshot...", async () => {});
 }
 
+async function cmdExport(kind: "state" | "game") {
+  const cmdKey = kind === "state" ? "export-state" : "export-game";
+  await withSpinner(`Exporting ${kind}...`, async () => {
+    const res = await doCommand({ [cmdKey]: true });
+    const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = `chess-${kind}-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    const fen = typeof res.fen === "string" ? res.fen : "";
+    addHistory({ type: "export", label: `${kind} → ${a.download}${fen ? " (" + fen.split(" ")[0] + ")" : ""}` });
+  });
+}
+
+async function cmdImport() {
+  const input = document.getElementById("import-file") as HTMLInputElement;
+  input.value = "";
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    await withSpinner(`Importing ${file.name}...`, async () => {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        throw new Error("File is not valid JSON: " + (e instanceof Error ? e.message : String(e)));
+      }
+      if (typeof parsed !== "object" || parsed === null) {
+        throw new Error("File must contain a JSON object");
+      }
+      const res = await doCommand({ "import-game": parsed as Record<string, unknown> });
+      const warning = document.getElementById("import-warning")!;
+      warning.classList.remove("hidden");
+      // Dismiss on the next click anywhere on the page. Deferred so the
+      // click that completes the import flow doesn't immediately hide it.
+      setTimeout(() => {
+        document.addEventListener("click", () => warning.classList.add("hidden"), { once: true });
+      }, 0);
+      const fen = typeof res.fen === "string" ? res.fen : "";
+      addHistory({ type: "import", label: `${file.name}${fen ? " (" + fen.split(" ")[0] + ")" : ""}` });
+    });
+  };
+  input.click();
+}
+
 async function cmdToggleMode() {
   setBusy(true);
   try {
@@ -325,6 +376,9 @@ document.getElementById("btn-reset")!.addEventListener("click", cmdReset);
 document.getElementById("btn-wipe")!.addEventListener("click", cmdWipe);
 document.getElementById("btn-cache")!.addEventListener("click", cmdClearCache);
 document.getElementById("btn-snapshot")!.addEventListener("click", cmdSnapshot);
+document.getElementById("btn-export-state")!.addEventListener("click", () => void cmdExport("state"));
+document.getElementById("btn-export-game")!.addEventListener("click", () => void cmdExport("game"));
+document.getElementById("btn-import")!.addEventListener("click", cmdImport);
 document.getElementById("btn-toggle-mode")!.addEventListener("click", cmdToggleMode);
 document.getElementById("btn-refresh")!.addEventListener("click", () => void refreshState());
 document.getElementById("btn-clear-history")!.addEventListener("click", () => {

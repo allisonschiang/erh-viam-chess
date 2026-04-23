@@ -55,6 +55,19 @@
         </section>
 
         <section class="card">
+          <h3>Import / Export</h3>
+          <div class="row wrap">
+            <button id="btn-export-state" class="btn-secondary">Export State</button>
+            <button id="btn-export-game" class="btn-secondary">Export Game</button>
+            <button id="btn-import" class="btn-secondary">Import</button>
+            <input id="import-file" type="file" accept="application/json,.json" class="hidden" />
+          </div>
+          <div id="import-warning" class="warning hidden">
+            Game imported. The physical board may be out of sync with the software — arrange pieces to match the new position before the next move.
+          </div>
+        </section>
+
+        <section class="card">
           <h3>Maintenance</h3>
           <div class="row wrap">
             <button id="btn-reset" class="btn-warn">Reset Board</button>
