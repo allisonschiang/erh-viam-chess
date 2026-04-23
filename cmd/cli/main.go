@@ -37,8 +37,6 @@ func realMain() error {
 	n := flag.Int("n", 1, "")
 	fenFile := flag.String("fen-file", "", "path to PGN file for play-fen command")
 	skill := flag.Float64("skill", 0, "engine skill level (0-100) for skill command")
-	mode := flag.String("mode", "", "must be one of \"human\" or \"engine\"")
-
 	flag.Parse()
 
 	if *debug {
@@ -170,29 +168,6 @@ func realMain() error {
 	case "wipe":
 		res, err := thing.DoCommand(ctx, map[string]interface{}{
 			"wipe": true,
-		})
-		if err != nil {
-			return err
-		}
-		logger.Infof("res: %v", res)
-		return nil
-
-	case "set-mode":
-		if *mode == "" {
-			return fmt.Errorf("set-mode requires -mode <human|engine>")
-		}
-		res, err := thing.DoCommand(ctx, map[string]interface{}{
-			"set-mode": *mode,
-		})
-		if err != nil {
-			return err
-		}
-		logger.Infof("res: %v", res)
-		return nil
-
-	case "toggle-mode":
-		res, err := thing.DoCommand(ctx, map[string]interface{}{
-			"toggle-mode": true,
 		})
 		if err != nil {
 			return err
