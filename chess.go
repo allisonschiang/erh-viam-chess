@@ -311,6 +311,13 @@ type cmdStruct struct {
 	BoardSnapshot bool   `mapstructure:"board-snapshot"`
 	ToggleMode    bool   `mapstructure:"toggle-mode"`
 	SetMode       string `mapstructure:"set-mode"`
+	// ExportState returns current position only: fen + graveyards, no move history.
+	ExportState bool `mapstructure:"export-state"`
+	// ExportGame returns full fidelity: fen + moves + graveyards.
+	ExportGame bool `mapstructure:"export-game"`
+	// ImportGame accepts either shape (state or game). Moves wins over FEN when both are present
+	// (same semantics as readState/savedStateToState); missing fields default to zero values.
+	ImportGame map[string]interface{} `mapstructure:"import-game"`
 }
 
 func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interface{}) (map[string]interface{}, error) {
@@ -354,6 +361,55 @@ func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interf
 	if cmd.Skill > 0 {
 		s.skillAdjust = cmd.Skill
 		return nil, nil
+	}
+	if cmd.ExportState || cmd.ExportGame {
+		theState, err := s.getGame(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ss := savedState{
+			FEN:            theState.game.FEN(),
+			WhiteGraveyard: theState.whiteGraveyard,
+			BlackGraveyard: theState.blackGraveyard,
+		}
+		if cmd.ExportGame {
+			gameMoves := theState.game.Moves()
+			ss.Moves = make([]string, len(gameMoves))
+			for i, m := range gameMoves {
+				ss.Moves[i] = m.String()
+			}
+		}
+		// Round-trip through JSON so the response map uses the savedState field
+		// names (fen, moves, white_graveyard, black_graveyard).
+		b, err := json.Marshal(&ss)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]interface{}{}
+		if err := json.Unmarshal(b, &out); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	if cmd.ImportGame != nil {
+		b, err := json.Marshal(cmd.ImportGame)
+		if err != nil {
+			return nil, fmt.Errorf("cannot marshal import-game blob: %w", err)
+		}
+		var ss savedState
+		if err := json.Unmarshal(b, &ss); err != nil {
+			return nil, fmt.Errorf("cannot decode import-game blob: %w", err)
+		}
+		// Validate by reconstructing — surfaces FEN parse errors and illegal moves.
+		validated, err := savedStateToState(ss)
+		if err != nil {
+			return nil, fmt.Errorf("invalid import-game: %w", err)
+		}
+		if err := writeSavedState(s.fenFile, ss); err != nil {
+			return nil, fmt.Errorf("cannot write state file: %w", err)
+		}
+		s.clearSquareCache()
+		return map[string]interface{}{"imported": true, "fen": validated.game.FEN()}, nil
 	}
 	if cmd.BoardSnapshot {
 		theState, err := s.getGame(ctx)
@@ -928,6 +984,13 @@ func readState(ctx context.Context, fn string) (*state, error) {
 		return nil, fmt.Errorf("cannot unmarshal json: %w", err)
 	}
 
+	return savedStateToState(ss)
+}
+
+// savedStateToState reconstructs the in-memory state from a savedState blob.
+// Prefers Moves (authoritative, enables undo) and falls back to FEN.
+// Graveyards are carried through as-is; if absent they default to empty.
+func savedStateToState(ss savedState) (*state, error) {
 	if len(ss.Moves) > 0 {
 		game := chess.NewGame()
 		for i, moveStr := range ss.Moves {
@@ -938,10 +1001,9 @@ func readState(ctx context.Context, fn string) (*state, error) {
 		return &state{game: game, whiteGraveyard: ss.WhiteGraveyard, blackGraveyard: ss.BlackGraveyard}, nil
 	}
 
-	// Legacy: load from FEN only (no move history available for undo).
 	f, err := chess.FEN(ss.FEN)
 	if err != nil {
-		return nil, fmt.Errorf("invalid fen from (%s) (%s) %w", fn, data, err)
+		return nil, fmt.Errorf("invalid fen (%q): %w", ss.FEN, err)
 	}
 	return &state{game: chess.NewGame(f), whiteGraveyard: ss.WhiteGraveyard, blackGraveyard: ss.BlackGraveyard}, nil
 }
@@ -962,11 +1024,21 @@ func (s *viamChessChess) saveGame(ctx context.Context, theState *state) error {
 		WhiteGraveyard: theState.whiteGraveyard,
 		BlackGraveyard: theState.blackGraveyard,
 	}
+	return writeSavedState(s.fenFile, ss)
+}
+
+// writeSavedState atomically persists ss to fn by writing to a temp file and
+// renaming. A crashed or partial write leaves the original file untouched.
+func writeSavedState(fn string, ss savedState) error {
 	b, err := json.MarshalIndent(&ss, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.fenFile, b, 0666)
+	tmp := fn + ".tmp"
+	if err := os.WriteFile(tmp, b, 0666); err != nil {
+		return err
+	}
+	return os.Rename(tmp, fn)
 }
 
 func (s *viamChessChess) pickMove(ctx context.Context, game *chess.Game) (*chess.Move, error) {
