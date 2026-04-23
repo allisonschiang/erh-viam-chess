@@ -66,12 +66,12 @@ type ChessConfig struct {
 
 	CaptureDir string // mostly for vla data
 
-	GrabZ            float64 `json:"grab-z"`             // default 40.0 mm
-	GrabZTall        float64 `json:"grab-z-tall"`        // default 80.0 mm (king/queen)
+	GrabZ             float64 `json:"grab-z"`              // default 40.0 mm
+	GrabZTall         float64 `json:"grab-z-tall"`         // default 80.0 mm (king/queen)
 	GraveyardSpacingY float64 `json:"graveyard-spacing-y"` // default 80.0 mm per row
-	GraveyardZ       float64 `json:"graveyard-z"`         // default 60.0 mm
-	GripperOpenPos   float64 `json:"gripper-open-pos"`    // default 450.0
-	SkillAdjust      float64 `json:"skill-adjust"`        // initial engine skill, default 50.0
+	GraveyardZ        float64 `json:"graveyard-z"`         // default 60.0 mm
+	GripperOpenPos    float64 `json:"gripper-open-pos"`    // default 450.0
+	SkillAdjust       float64 `json:"skill-adjust"`        // initial engine skill, default 50.0
 }
 
 func (cfg *ChessConfig) engine() string {
