@@ -67,6 +67,13 @@ type ChessConfig struct {
 
 	CaptureDir string // mostly for vla data
 
+	GrabZ             float64 `json:"grab-z"`              // default 40.0 mm
+	GrabZTall         float64 `json:"grab-z-tall"`         // default 80.0 mm (king/queen)
+	GraveyardSpacingY float64 `json:"graveyard-spacing-y"` // default 80.0 mm per row
+	GraveyardZ        float64 `json:"graveyard-z"`         // default 60.0 mm
+	GripperOpenPos    float64 `json:"gripper-open-pos"`    // default 450.0
+	SkillAdjust       float64 `json:"skill-adjust"`        // initial engine skill, default 50.0
+
 	Speak       bool `json:"speak"`
 	SpeakSpeed  int  `json:"speak-speed"`
 	SpeakVolume int  `json:"speak-volume"`
@@ -84,6 +91,48 @@ func (cfg *ChessConfig) engineMillis() int {
 		return 10
 	}
 	return cfg.EngineMillis
+}
+
+func (cfg *ChessConfig) grabZ() float64 {
+	if cfg.GrabZ <= 0 {
+		return 40.0
+	}
+	return cfg.GrabZ
+}
+
+func (cfg *ChessConfig) grabZTall() float64 {
+	if cfg.GrabZTall <= 0 {
+		return 80.0
+	}
+	return cfg.GrabZTall
+}
+
+func (cfg *ChessConfig) graveyardSpacingY() float64 {
+	if cfg.GraveyardSpacingY <= 0 {
+		return 80.0
+	}
+	return cfg.GraveyardSpacingY
+}
+
+func (cfg *ChessConfig) graveyardZ() float64 {
+	if cfg.GraveyardZ <= 0 {
+		return 60.0
+	}
+	return cfg.GraveyardZ
+}
+
+func (cfg *ChessConfig) gripperOpenPos() float64 {
+	if cfg.GripperOpenPos <= 0 {
+		return 450.0
+	}
+	return cfg.GripperOpenPos
+}
+
+func (cfg *ChessConfig) initialSkillAdjust() float64 {
+	if cfg.SkillAdjust <= 0 {
+		return 50.0
+	}
+	return cfg.SkillAdjust
 }
 
 func (cfg *ChessConfig) Validate(path string) ([]string, []string, error) {
@@ -117,6 +166,7 @@ func (cfg *ChessConfig) Validate(path string) ([]string, []string, error) {
 
 type viamChessChess struct {
 	resource.AlwaysRebuild
+	resource.Named
 
 	name resource.Name
 
@@ -148,6 +198,8 @@ type viamChessChess struct {
 
 	squareXY   map[string]r3.Vector
 	squareXYMu sync.RWMutex
+
+	humanMode bool // true = human vs engine, false = engine vs engine
 }
 
 func newViamChessChess(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (resource.Resource, error) {
@@ -171,7 +223,7 @@ func NewChess(ctx context.Context, deps resource.Dependencies, name resource.Nam
 		logger:      logger,
 		conf:        conf,
 		cancelFunc:  cancelFunc,
-		skillAdjust: 50,
+		skillAdjust: conf.initialSkillAdjust(),
 		squareXY:    make(map[string]r3.Vector),
 	}
 
@@ -253,9 +305,12 @@ type cmdStruct struct {
 	Wipe          bool
 	Skill         float64
 	Hover         string
-	ClearCache    bool
-	PlayFEN       string
-	BoardSnapshot bool `mapstructure:"board-snapshot"`
+	ClearCache    bool `mapstructure:"clear-cache"`
+	Undo          int
+	PlayFEN       string `mapstructure:"play-fen"`
+	BoardSnapshot bool   `mapstructure:"board-snapshot"`
+	ToggleMode    bool   `mapstructure:"toggle-mode"`
+	SetMode       string `mapstructure:"set-mode"`
 }
 
 func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interface{}) (map[string]interface{}, error) {
@@ -266,17 +321,69 @@ func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interf
 	s.doCommandLock.Lock()
 	defer s.doCommandLock.Unlock()
 
+	var cmd cmdStruct
+	err := mapstructure.Decode(cmdMap, &cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read-only / state-only commands — no arm movement needed, skip goToStart.
+	if cmd.ToggleMode {
+		s.humanMode = !s.humanMode
+		return map[string]interface{}{"mode": s.currentMode()}, nil
+	}
+	if cmd.SetMode != "" {
+		switch cmd.SetMode {
+		case "human":
+			s.humanMode = true
+		case "engine":
+			s.humanMode = false
+		default:
+			return nil, fmt.Errorf("unknown mode %q: use \"human\" or \"engine\"", cmd.SetMode)
+		}
+		return map[string]interface{}{"mode": s.currentMode()}, nil
+	}
+	if cmd.Wipe {
+		s.clearSquareCache()
+		return nil, s.wipe(ctx)
+	}
+	if cmd.ClearCache {
+		s.clearSquareCache()
+		return nil, nil
+	}
+	if cmd.Skill > 0 {
+		s.skillAdjust = cmd.Skill
+		return nil, nil
+	}
+	if cmd.BoardSnapshot {
+		theState, err := s.getGame(ctx)
+		if err != nil {
+			return nil, err
+		}
+		all, err := s.pieceFinder.CaptureAllFromCamera(ctx, "", viscapture.CaptureOptions{}, nil)
+		if err != nil {
+			return nil, err
+		}
+		cameraBoard := map[string]interface{}{}
+		for _, o := range all.Objects {
+			label := o.Geometry.Label()
+			if idx := strings.LastIndex(label, "-"); idx != -1 {
+				cameraBoard[label[:idx]] = label[idx+1:]
+			}
+		}
+		return map[string]interface{}{
+			"fen":          theState.game.FEN(),
+			"camera_board": cameraBoard,
+			"mode":         s.currentMode(),
+		}, nil
+	}
+
 	defer func() {
 		err := s.goToStart(ctx)
 		if err != nil {
 			s.logger.Warnf("can't go home: %v", err)
 		}
 	}()
-	var cmd cmdStruct
-	err := mapstructure.Decode(cmdMap, &cmd)
-	if err != nil {
-		return nil, err
-	}
 
 	if cmd.Hover != "" {
 		err := s.goToStart(ctx)
@@ -339,58 +446,36 @@ func (s *viamChessChess) DoCommand(ctx context.Context, cmdMap map[string]interf
 
 	if cmd.Go > 0 {
 		var m *chess.Move
-		for n := range cmd.Go {
-			m, err = s.makeAMove(ctx, n == 0)
+		if s.humanMode {
+			// Human vs engine: detect the human's physical move via camera, then
+			// engine responds once regardless of cmd.Go value.
+			m, err = s.makeAMove(ctx, true)
 			if err != nil {
 				return nil, err
 			}
+		} else {
+			// Engine vs engine: make cmd.Go consecutive engine moves.
+			for n := range cmd.Go {
+				m, err = s.makeAMove(ctx, n == 0)
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
-		return map[string]interface{}{"move": m.String()}, nil
+		return map[string]interface{}{"move": m.String(), "mode": s.currentMode()}, nil
+	}
+
+	if cmd.Undo > 0 {
+		err = s.undoMoves(ctx, cmd.Undo)
+		return nil, err
 	}
 
 	if cmd.Reset {
 		return nil, s.resetBoard(ctx)
 	}
 
-	if cmd.Wipe {
-		s.clearSquareCache()
-		return nil, s.wipe(ctx)
-	}
-
-	if cmd.ClearCache {
-		s.clearSquareCache()
-		return nil, nil
-	}
-
-	if cmd.Skill > 0 {
-		s.skillAdjust = cmd.Skill
-		return nil, nil
-	}
-
 	if cmd.PlayFEN != "" {
 		return nil, s.playFENFile(ctx, cmd.PlayFEN)
-	}
-
-	if cmd.BoardSnapshot {
-		theState, err := s.getGame(ctx)
-		if err != nil {
-			return nil, err
-		}
-		all, err := s.pieceFinder.CaptureAllFromCamera(ctx, "", viscapture.CaptureOptions{}, nil)
-		if err != nil {
-			return nil, err
-		}
-		cameraBoard := map[string]interface{}{}
-		for _, o := range all.Objects {
-			label := o.Geometry.Label()
-			if idx := strings.LastIndex(label, "-"); idx != -1 {
-				cameraBoard[label[:idx]] = label[idx+1:]
-			}
-		}
-		return map[string]interface{}{
-			"fen":          theState.game.FEN(),
-			"camera_board": cameraBoard,
-		}, nil
 	}
 
 	return nil, fmt.Errorf("bad cmd %v", cmdMap)
@@ -431,14 +516,15 @@ func (s *viamChessChess) findDetection(data viscapture.VisCapture, pos string) o
 // isWhite=true places pieces on the a-file side (white's graveyard, negative Y offset).
 // isWhite=false places pieces on the h-file side (black's graveyard, positive Y offset).
 func (s *viamChessChess) graveyardPosition(data viscapture.VisCapture, colorIdx int, isWhite bool) (r3.Vector, error) {
-	f := 8 - (colorIdx % 8)
 	ex := 1 + (colorIdx / 8)
 
 	var k string
 	if isWhite {
-		k = fmt.Sprintf("a%d", f)
+		// Black player's side: a8, a7, a6, … (descending from rank 8).
+		k = fmt.Sprintf("a%d", 8-(colorIdx%8))
 	} else {
-		k = fmt.Sprintf("h%d", f)
+		// White player's side: h1, h2, h3, … (ascending from rank 1).
+		k = fmt.Sprintf("h%d", 1+(colorIdx%8))
 	}
 
 	// Use the cached X,Y if available (data may be empty when the square cache is warm).
@@ -458,10 +544,12 @@ func (s *viamChessChess) graveyardPosition(data viscapture.VisCapture, colorIdx 
 		baseX, baseY = md.Center().X, md.Center().Y
 	}
 
+	spacingY := s.conf.graveyardSpacingY()
+	graveyardZ := s.conf.graveyardZ()
 	if isWhite {
-		return r3.Vector{X: baseX, Y: baseY - float64(ex*80), Z: 60}, nil
+		return r3.Vector{X: baseX, Y: baseY - float64(ex)*spacingY, Z: graveyardZ}, nil
 	}
-	return r3.Vector{X: baseX, Y: baseY + float64(ex*80), Z: 60}, nil
+	return r3.Vector{X: baseX, Y: baseY + float64(ex)*spacingY, Z: graveyardZ}, nil
 }
 
 func (s *viamChessChess) getCenterFor(data viscapture.VisCapture, pos string, theState *state) (r3.Vector, error) {
@@ -493,6 +581,13 @@ func (s *viamChessChess) getCenterFor(data viscapture.VisCapture, pos string, th
 	}
 
 	return GetPickupCenter(o), nil
+}
+
+func (s *viamChessChess) currentMode() string {
+	if s.humanMode {
+		return "human"
+	}
+	return "engine"
 }
 
 // allSquaresCached returns true once all 64 board squares have a cached X,Y position.
@@ -604,8 +699,8 @@ func (s *viamChessChess) movePiece(ctx context.Context, data viscapture.VisCaptu
 		}
 	}
 
-	const grabZ = 40.0     // grab height for standard pieces (mm)
-	const grabZTall = 80.0 // grab height for king and queen (mm)
+	grabZ := s.conf.grabZ()
+	grabZTall := s.conf.grabZTall()
 
 	// Determine grab height based on piece type.
 	pickupZ := grabZ
@@ -762,7 +857,7 @@ func (s *viamChessChess) setupGripper(ctx context.Context) error {
 	ctx, span := trace.StartSpan(ctx, "setupGripper")
 	defer span.End()
 
-	_, err := s.arm.DoCommand(ctx, map[string]interface{}{"move_gripper": 450.0})
+	_, err := s.arm.DoCommand(ctx, map[string]interface{}{"move_gripper": s.conf.gripperOpenPos()})
 	return err
 }
 
@@ -805,9 +900,10 @@ type state struct {
 }
 
 type savedState struct {
-	FEN            string `json:"fen"`
-	WhiteGraveyard []int  `json:"white_graveyard,omitempty"`
-	BlackGraveyard []int  `json:"black_graveyard,omitempty"`
+	FEN            string   `json:"fen,omitempty"`
+	Moves          []string `json:"moves,omitempty"`
+	WhiteGraveyard []int    `json:"white_graveyard,omitempty"`
+	BlackGraveyard []int    `json:"black_graveyard,omitempty"`
 }
 
 func (s *viamChessChess) getGame(ctx context.Context) (*state, error) {
@@ -832,6 +928,17 @@ func readState(ctx context.Context, fn string) (*state, error) {
 		return nil, fmt.Errorf("cannot unmarshal json: %w", err)
 	}
 
+	if len(ss.Moves) > 0 {
+		game := chess.NewGame()
+		for i, moveStr := range ss.Moves {
+			if err := game.PushNotationMove(moveStr, chess.UCINotation{}, nil); err != nil {
+				return nil, fmt.Errorf("cannot replay move %d (%s): %w", i, moveStr, err)
+			}
+		}
+		return &state{game: game, whiteGraveyard: ss.WhiteGraveyard, blackGraveyard: ss.BlackGraveyard}, nil
+	}
+
+	// Legacy: load from FEN only (no move history available for undo).
 	f, err := chess.FEN(ss.FEN)
 	if err != nil {
 		return nil, fmt.Errorf("invalid fen from (%s) (%s) %w", fn, data, err)
@@ -843,8 +950,15 @@ func (s *viamChessChess) saveGame(ctx context.Context, theState *state) error {
 	ctx, span := trace.StartSpan(ctx, "saveGame")
 	defer span.End()
 
+	gameMoves := theState.game.Moves()
+	moveStrs := make([]string, len(gameMoves))
+	for i, m := range gameMoves {
+		moveStrs[i] = m.String()
+	}
+
 	ss := savedState{
 		FEN:            theState.game.FEN(),
+		Moves:          moveStrs,
 		WhiteGraveyard: theState.whiteGraveyard,
 		BlackGraveyard: theState.blackGraveyard,
 	}
@@ -978,6 +1092,15 @@ func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*ch
 		if err != nil {
 			return nil, err
 		}
+		// checkPositionForMoves loads its own copy of the state, applies the
+		// human's move, and saves it. Reload so pickMove sees the updated turn.
+		//
+		// checkPositionForMoves may have recorded a human move and saved the game.
+		// Reload so pickMove, movePiece, and saveGame operate on the current position.
+		theState, err = s.getGame(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	m, err := s.pickMove(ctx, theState.game)
@@ -1058,6 +1181,184 @@ func (s *viamChessChess) makeAMove(ctx context.Context, doSanityCheck bool) (*ch
 	go speakText(s.conf, buildMoveDescription(m, positionBeforeMove, theState.game))
 
 	return m, nil
+}
+
+// undoMoves reverts the last n moves on the physical board and updates the saved game state.
+// For each move being undone (newest first):
+//   - The piece is moved back from its destination to its source.
+//   - For castling, the rook is also moved back.
+//   - For captures, the captured piece is restored from the graveyard to its original square.
+func (s *viamChessChess) undoMoves(ctx context.Context, n int) error {
+	ctx, span := trace.StartSpan(ctx, "undoMoves")
+	defer span.End()
+
+	theState, err := s.getGame(ctx)
+	if err != nil {
+		return err
+	}
+
+	moves := theState.game.Moves()
+	if n > len(moves) {
+		return fmt.Errorf("cannot undo %d moves: only %d have been played", n, len(moves))
+	}
+
+	keepCount := len(moves) - n
+
+	// Fresh snapshot for physical moves and to populate the square position cache.
+	err = s.goToStart(ctx)
+	if err != nil {
+		return fmt.Errorf("can't go home: %w", err)
+	}
+	all, err := s.pieceFinder.CaptureAllFromCamera(ctx, "", viscapture.CaptureOptions{}, nil)
+	if err != nil {
+		return err
+	}
+	s.populateCacheFromCapture(all)
+
+	// Replay the full move history to record what each move captured (needed for graveyard restoration).
+	type moveInfo struct {
+		capturedPiece chess.Piece
+		captureSquare string // board square where the captured piece should be restored
+	}
+	infos := make([]moveInfo, len(moves))
+	tempGame := chess.NewGame()
+	for i, m := range moves {
+		board := tempGame.Position().Board()
+		info := moveInfo{}
+		if m.HasTag(chess.EnPassant) {
+			startRank := m.S1().String()[1]
+			endFile := m.S2().String()[0]
+			info.captureSquare = fmt.Sprintf("%c%c", endFile, startRank)
+			if startRank == '5' {
+				info.capturedPiece = chess.BlackPawn
+			} else {
+				info.capturedPiece = chess.WhitePawn
+			}
+		} else if m.HasTag(chess.Capture) {
+			info.capturedPiece = board.Piece(m.S2())
+			info.captureSquare = m.S2().String()
+		}
+		infos[i] = info
+		if err := tempGame.Move(m, nil); err != nil {
+			return fmt.Errorf("replay move %d: %w", i, err)
+		}
+	}
+
+	// Track graveyard state so we know which slot to retrieve each captured piece from.
+	curWhiteGY := make([]int, len(theState.whiteGraveyard))
+	copy(curWhiteGY, theState.whiteGraveyard)
+	curBlackGY := make([]int, len(theState.blackGraveyard))
+	copy(curBlackGY, theState.blackGraveyard)
+
+	// Mark a board square as empty in the snapshot so subsequent movePiece calls
+	// don't see stale occupancy data (mirrors the pattern in resetBoard).
+	clearSquare := func(squareName string) {
+		for _, o := range all.Objects {
+			if strings.HasPrefix(o.Geometry.Label(), squareName+"-") {
+				o.Geometry.SetLabel(squareName + "-0")
+				break
+			}
+		}
+	}
+
+	// Undo each move newest-first.
+	for i := len(moves) - 1; i >= keepCount; i-- {
+		m := moves[i]
+		info := infos[i]
+
+		// Move the main piece back: destination → source.
+		if err := s.movePiece(ctx, all, nil, m.S2().String(), m.S1().String(), nil, nil); err != nil {
+			return fmt.Errorf("undo move %s: %w", m.String(), err)
+		}
+		clearSquare(m.S2().String())
+
+		// For castling, also move the rook back.
+		if m.HasTag(chess.KingSideCastle) || m.HasTag(chess.QueenSideCastle) {
+			var rookFrom, rookTo string
+			switch m.S1().String() {
+			case "e1":
+				if m.HasTag(chess.KingSideCastle) {
+					rookFrom, rookTo = "f1", "h1"
+				} else {
+					rookFrom, rookTo = "d1", "a1"
+				}
+			case "e8":
+				if m.HasTag(chess.KingSideCastle) {
+					rookFrom, rookTo = "f8", "h8"
+				} else {
+					rookFrom, rookTo = "d8", "a8"
+				}
+			}
+			if err := s.movePiece(ctx, all, nil, rookFrom, rookTo, nil, nil); err != nil {
+				return fmt.Errorf("undo castle rook: %w", err)
+			}
+			clearSquare(rookFrom)
+		}
+
+		// Restore any captured piece from the graveyard back to its original square.
+		if info.capturedPiece != chess.NoPiece {
+			isWhite := info.capturedPiece.Color() == chess.White
+			var gyFrom string
+			if isWhite {
+				idx := len(curWhiteGY) - 1
+				gyFrom = fmt.Sprintf("XW%d", idx)
+				curWhiteGY = curWhiteGY[:idx]
+			} else {
+				idx := len(curBlackGY) - 1
+				gyFrom = fmt.Sprintf("XB%d", idx)
+				curBlackGY = curBlackGY[:idx]
+			}
+			if err := s.movePiece(ctx, all, nil, gyFrom, info.captureSquare, nil, nil); err != nil {
+				return fmt.Errorf("undo restore captured piece: %w", err)
+			}
+		}
+	}
+
+	// Rebuild game state by replaying only the kept moves, re-deriving the graveyard.
+	newState := &state{game: chess.NewGame(), whiteGraveyard: []int{}, blackGraveyard: []int{}}
+	for i := 0; i < keepCount; i++ {
+		m := moves[i]
+		board := newState.game.Position().Board()
+		if m.HasTag(chess.EnPassant) {
+			startRank := m.S1().String()[1]
+			if startRank == '5' {
+				newState.blackGraveyard = append(newState.blackGraveyard, int(chess.BlackPawn))
+			} else {
+				newState.whiteGraveyard = append(newState.whiteGraveyard, int(chess.WhitePawn))
+			}
+		} else if m.HasTag(chess.Capture) {
+			captured := board.Piece(m.S2())
+			if captured.Color() == chess.White {
+				newState.whiteGraveyard = append(newState.whiteGraveyard, int(captured))
+			} else {
+				newState.blackGraveyard = append(newState.blackGraveyard, int(captured))
+			}
+		}
+		// Use PushNotationMove instead of Move(m) to avoid re-using the original
+		// *chess.Move pointer. Those pointers still have their children from the old
+		// game tree; passing them directly into newState.game would cause
+		// newState.game.Moves() to traverse into the discarded tail and save moves
+		// that should have been undone.
+		if err := newState.game.PushNotationMove(m.String(), chess.UCINotation{}, nil); err != nil {
+			return fmt.Errorf("rebuild move %d: %w", i, err)
+		}
+	}
+
+	// Refresh the piece finder's internal snapshot cache with the post-undo board
+	// state. Some piece finder implementations cache the last capture result, so
+	// without this the subsequent `go` command would compare the game state against
+	// the pre-undo snapshot and see N×2 spurious differences.
+	s.clearSquareCache()
+	if err := s.goToStart(ctx); err != nil {
+		return fmt.Errorf("can't go home after undo: %w", err)
+	}
+	allFresh, err := s.pieceFinder.CaptureAllFromCamera(ctx, "", viscapture.CaptureOptions{}, nil)
+	if err != nil {
+		return fmt.Errorf("can't refresh snapshot after undo: %w", err)
+	}
+	s.populateCacheFromCapture(allFresh)
+
+	return s.saveGame(ctx, newState)
 }
 
 func (s *viamChessChess) myGrab(ctx context.Context) (bool, error) {
@@ -1318,6 +1619,30 @@ func (s *viamChessChess) checkPositionForMoves(ctx context.Context, all viscaptu
 	for _, m := range moves {
 		if m.S1() == from && m.S2() == to {
 			s.logger.Infof("found it: %v", m.String())
+
+			// Track captured pieces in the graveyard so that reset
+			// knows where they are (the human placed them physically).
+			if m.HasTag(chess.Capture) {
+				captured := theState.game.Position().Board().Piece(m.S2())
+				if captured != chess.NoPiece {
+					if captured.Color() == chess.White {
+						theState.whiteGraveyard = append(theState.whiteGraveyard, int(captured))
+					} else {
+						theState.blackGraveyard = append(theState.blackGraveyard, int(captured))
+					}
+				}
+			} else if m.HasTag(chess.EnPassant) {
+				// The captured pawn is on the same rank as the moving pawn,
+				// on the file of the destination square.
+				if m.S1().Rank() == chess.Rank5 {
+					// White captures black pawn via en passant.
+					theState.blackGraveyard = append(theState.blackGraveyard, int(chess.BlackPawn))
+				} else {
+					// Black captures white pawn via en passant.
+					theState.whiteGraveyard = append(theState.whiteGraveyard, int(chess.WhitePawn))
+				}
+			}
+
 			err = theState.game.Move(&m, nil)
 			if err != nil {
 				return err
@@ -1326,6 +1651,29 @@ func (s *viamChessChess) checkPositionForMoves(ctx context.Context, all viscaptu
 			err = s.saveGame(ctx, theState)
 			if err != nil {
 				return err
+			}
+
+			// If the human only moved the king (2 differences), physically move
+			// the rook too. Use nil theState so movePiece reads occupancy from
+			// the camera (F1/D1/F8/D8 is empty, rook is still at H1/A1/H8/A8).
+			if len(differences) == 2 {
+				var rookFrom, rookTo string
+				switch {
+				case m.HasTag(chess.KingSideCastle) && from == chess.E1:
+					rookFrom, rookTo = "h1", "f1"
+				case m.HasTag(chess.QueenSideCastle) && from == chess.E1:
+					rookFrom, rookTo = "a1", "d1"
+				case m.HasTag(chess.KingSideCastle) && from == chess.E8:
+					rookFrom, rookTo = "h8", "f8"
+				case m.HasTag(chess.QueenSideCastle) && from == chess.E8:
+					rookFrom, rookTo = "a8", "d8"
+				}
+				if rookFrom != "" {
+					s.logger.Infof("castle detected: moving rook %s -> %s", rookFrom, rookTo)
+					if err = s.movePiece(ctx, all, nil, rookFrom, rookTo, nil, nil); err != nil {
+						return fmt.Errorf("castle rook move failed: %w", err)
+					}
+				}
 			}
 
 			return nil

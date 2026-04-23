@@ -1,19 +1,19 @@
 {
   "$schema": "https://dl.viam.dev/module.schema.json",
-  "module_id": "erh:viam-chess",
+  "module_id": "viam-labs:hackathon-chess",
   "visibility": "public",
-  "url": "https://github.com/erh/viam-chess",
+  "url": "https://github.com/jgeaso1266/erh-viam-chess",
   "description": "chess",
   "models": [
     {
       "api": "rdk:service:generic",
-      "model": "erh:viam-chess:chess",
+      "model": "viam-labs:hackathon-chess:chess",
       "short_description": "Provide a short (100 characters or less) description of this model here",
       "markdown_link": "README.md#chess-config"
     },
     {
       "api": "rdk:service:vision",
-      "model": "erh:viam-chess:piece-finder",
+      "model": "viam-labs:hackathon-chess:piece-finder",
       "short_description": "debugging tool mostly i think",
       "markdown_link": "README.md#piece-finder-config"
     }
